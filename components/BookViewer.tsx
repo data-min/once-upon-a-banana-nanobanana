@@ -111,8 +111,8 @@ const BookViewer: React.FC = () => {
                 )}
             </div>
             {/* Right Page: Text */}
-            <div className="w-1/2 h-full p-8 bg-amber-50 relative">
-                <div className="w-full h-full flex items-center justify-center">
+            <div className="w-1/2 h-full p-8 bg-amber-50 relative flex flex-col">
+                <div className="flex-grow overflow-y-auto pr-2">
                     {revision.text && <p className="font-body text-xl md:text-2xl leading-relaxed text-gray-700 max-w-prose text-left">{revision.text}</p>}
                 </div>
             </div>

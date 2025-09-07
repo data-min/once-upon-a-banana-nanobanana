@@ -633,7 +633,7 @@ export async function generateSinglePageVideo(
 
     onProgress('Sending request to the video model...', 5);
     let operation = await ai.models.generateVideos({
-        model: 'veo-2.0-generate-001',
+        model: 'veo-3.0-fast-generate-preview',
         prompt: videoPrompt,
         image: {
             imageBytes: referenceImage.base64,
