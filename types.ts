@@ -26,6 +26,7 @@ export interface Revision {
     imageUrl: string;
     type: 'initial' | 'text' | 'image';
     capture?: CaptureData;
+    audioUrl?: string;
 }
 
 export interface Page {
@@ -95,6 +96,7 @@ export type AppAction =
   | { type: 'SET_CURRENT_PAGE'; payload: number }
   | { type: 'LOAD_BOOK'; payload: string }
   | { type: 'FINISH_BOOK' }
+  | { type: 'EDIT_BOOK' }
   | { type: 'START_REAL_TIME_INPUT'; payload: { mode: CaptureType; from: 'input' | 'creating'; pageId?: string; revisionType?: 'text' | 'image' } }
   | { type: 'CANCEL_REAL_TIME_INPUT' }
   | { type: 'GENERATE_PAGE_VIDEO_SUCCESS'; payload: { pageId: string; videoUrl: string } }

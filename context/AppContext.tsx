@@ -212,6 +212,19 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             step: 'library', // Go to library after finishing
         };
     }
+    
+    case 'EDIT_BOOK': {
+        if (!state.book) return state;
+        const unfinishedBook = { ...state.book, isFinished: false };
+        const newLibrary = updateLibrary(state.library, unfinishedBook);
+        return {
+            ...state,
+            book: unfinishedBook,
+            library: newLibrary,
+            step: 'creating',
+            currentPageIndex: unfinishedBook.pages.length,
+        };
+    }
       
     case 'START_REAL_TIME_INPUT': {
         // FIX: The keys of this map must be of type CaptureType ('drawing', 'video', 'audio').

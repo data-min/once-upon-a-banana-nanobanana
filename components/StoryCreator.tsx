@@ -4,6 +4,7 @@ import { generateNextPage, revisePage, generateStoryEnding, reviseCoverImage, ge
 import Button from './Button';
 import { InitialIdea, Page, Book, CaptureType } from '../types';
 import { fileToBase64 } from '../utils/fileUtils';
+import AudioPlayer from './AudioPlayer';
 
 const CoverRevisionModal: React.FC<{
   book: Book;
@@ -227,7 +228,7 @@ const StoryCreator: React.FC = () => {
   const [showCoverRevisionModal, setShowCoverRevisionModal] = useState(false);
   const [showNextPageModal, setShowNextPageModal] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
-  const [isVideoGenerating, setIsVideoGenerating] = useState<string | null>(null); // Holds pageId
+  const [videoGenerationProgress, setVideoGenerationProgress] = useState<{ [pageId: string]: { message: string; percentage: number } }>({});
   
   const { book, currentPageIndex } = state;
 
@@ -273,15 +274,28 @@ const StoryCreator: React.FC = () => {
   };
   
   const handleGenerateVideoForPage = async (page: Page) => {
-      if (!book) return;
-      setIsVideoGenerating(page.id);
+      if (!book || videoGenerationProgress[page.id]) return;
+
+      const onProgress = (message: string, percentage: number) => {
+          setVideoGenerationProgress(prev => ({
+              ...prev,
+              [page.id]: { message, percentage }
+          }));
+      };
+
+      onProgress('Preparing to generate...', 0);
+
       try {
-          const { videoUrl } = await generateSinglePageVideo(book, page);
+          const { videoUrl } = await generateSinglePageVideo(book, page, onProgress);
           dispatch({ type: 'GENERATE_PAGE_VIDEO_SUCCESS', payload: { pageId: page.id, videoUrl } });
       } catch (err) {
           dispatch({ type: 'GENERATION_FAILURE', payload: err instanceof Error ? err.message : 'Failed to create page video.' });
       } finally {
-          setIsVideoGenerating(null);
+          setVideoGenerationProgress(prev => {
+              const newProgress = { ...prev };
+              delete newProgress[page.id];
+              return newProgress;
+          });
       }
   };
 
@@ -298,6 +312,7 @@ const StoryCreator: React.FC = () => {
   if (!isCoverView && (!currentPage || !currentRevision)) return <div className="text-center font-display text-3xl">Loading page...</div>;
   
   const isLastPage = currentPageIndex === book.pages.length;
+  const pageVideoProgress = currentPage && videoGenerationProgress[currentPage.id];
 
   return (
     <div className="animate-fade-in">
@@ -335,11 +350,22 @@ const StoryCreator: React.FC = () => {
                         )}
                         <div className="flex flex-wrap gap-2 items-end">
                             <button onClick={() => setShowRevisionModal(true)} className="px-4 py-2 bg-orange-200 text-orange-800 rounded-lg">Revise Page</button>
+                            {currentRevision?.audioUrl && (
+                                <AudioPlayer src={currentRevision.audioUrl} />
+                            )}
                              {currentPage.videoUrl ? (
                                 <video src={currentPage.videoUrl} controls className="w-full max-w-xs rounded-lg shadow-md mt-4"></video>
+                            ) : pageVideoProgress ? (
+                                <div className="w-full max-w-xs mt-4 p-3 bg-purple-100 rounded-lg animate-fade-in">
+                                    <p className="font-body text-sm text-purple-800 font-bold mb-1">🎬 Creating Video...</p>
+                                    <div className="w-full bg-purple-200 rounded-full h-2.5 my-2">
+                                        <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${pageVideoProgress.percentage}%`, transition: 'width 0.5s ease-in-out' }}></div>
+                                    </div>
+                                    <p className="font-body text-xs text-purple-700 truncate">{pageVideoProgress.message}</p>
+                                </div>
                             ) : (
-                                <button onClick={() => handleGenerateVideoForPage(currentPage)} className="px-4 py-2 bg-purple-200 text-purple-800 rounded-lg flex items-center gap-2" disabled={isVideoGenerating === currentPage.id}>
-                                    🎬 {isVideoGenerating === currentPage.id ? 'Creating...' : 'Create Page Video'}
+                                <button onClick={() => handleGenerateVideoForPage(currentPage)} className="px-4 py-2 bg-purple-200 text-purple-800 rounded-lg flex items-center gap-2">
+                                    🎬 Create Page Video
                                 </button>
                             )}
                         </div>

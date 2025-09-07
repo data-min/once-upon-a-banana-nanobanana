@@ -1,7 +1,9 @@
+
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import Button from './Button';
 import VideoGeneratorModal from './VideoGeneratorModal';
+import AudioPlayer from './AudioPlayer';
 
 const BookViewer: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -46,6 +48,7 @@ const BookViewer: React.FC = () => {
       dispatch({ type: 'SET_CURRENT_PAGE', payload: book.pages.length });
       dispatch({ type: 'SET_STEP', payload: 'creating' });
   };
+  const handleEditBook = () => dispatch({ type: 'EDIT_BOOK' });
   const handleBackToLibrary = () => dispatch({ type: 'SET_STEP', payload: 'library' });
   const handleCreateNew = () => dispatch({ type: 'RESET' });
 
@@ -80,8 +83,13 @@ const BookViewer: React.FC = () => {
                 {revision.imageUrl && <img src={revision.imageUrl} alt={`Illustration for page ${pageIndex + 1}`} className="w-full h-full object-contain" />}
             </div>
             {/* Right Page: Text */}
-            <div className="w-1/2 h-full flex items-center justify-center p-8 bg-amber-50">
-                {revision.text && <p className="font-body text-xl md:text-2xl leading-relaxed text-gray-700 max-w-prose text-left">{revision.text}</p>}
+            <div className="w-1/2 h-full p-8 bg-amber-50 relative">
+                <div className="w-full h-full flex items-center justify-center">
+                    {revision.text && <p className="font-body text-xl md:text-2xl leading-relaxed text-gray-700 max-w-prose text-left">{revision.text}</p>}
+                </div>
+                {revision.audioUrl && (
+                    <AudioPlayer src={revision.audioUrl} className="absolute top-6 right-6" />
+                )}
             </div>
         </div>
     );
@@ -139,6 +147,7 @@ const BookViewer: React.FC = () => {
             {book.isFinished ? (
                 <>
                     <ActionButton onClick={handleBackToLibrary} icon="📚">My Library</ActionButton>
+                    <ActionButton onClick={handleEditBook} icon="✏️">Edit Story</ActionButton>
                     <ActionButton onClick={() => setShowVideoModal(true)} icon="🎬" disabled={!allVideosGenerated}>Create Full Story Video</ActionButton>
                     <ActionButton onClick={() => setShowShareModal(true)} icon="🔗">Share Link</ActionButton>
                     <Button onClick={handleCreateNew} variant="primary">Create New</Button>
@@ -146,7 +155,7 @@ const BookViewer: React.FC = () => {
             ) : (
                 <>
                     {!book.dedication && <button onClick={() => setShowDedicationModal(true)} className="px-3 py-2 text-orange-700 hover:text-orange-900 transition font-bold">Add Dedication</button>}
-                    {state.path === 'interactive' && <button onClick={handleBackToEditor} className="px-3 py-2 text-orange-700 hover:text-orange-900 transition font-bold">Back to Editor</button>}
+                    <button onClick={handleBackToEditor} className="px-3 py-2 text-orange-700 hover:text-orange-900 transition font-bold">Back to Editor</button>
                     <Button onClick={handleFinishBook}>Save & Finish</Button>
                 </>
             )}
@@ -154,7 +163,10 @@ const BookViewer: React.FC = () => {
 
         <Button variant="secondary" onClick={handleNext} disabled={currentPageIndex >= totalItems - 1}>Next</Button>
       </div>
-       {book.isFinished && !allVideosGenerated && <p className="text-center text-sm text-gray-500 mt-2">Go back to the editor to create a video for each page before you can create the full story video.</p>}
+       {book.isFinished && !allVideosGenerated && <p className="text-center text-sm text-gray-500 mt-2">Edit this story to create a video for each page, then you can create the full story video.</p>}
+       {!book.isFinished && state.path === 'full' && !allVideosGenerated && (
+            <p className="text-center text-sm text-gray-500 mt-2">You can now create a video for each page before finishing your book!</p>
+       )}
     </div>
   );
 };

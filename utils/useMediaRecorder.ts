@@ -23,7 +23,7 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
   const [timer, setTimer] = useState(timeLimit);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<number | null>(null);
 
   const getPermissions = async () => {
     setStatus('permission');
@@ -70,7 +70,9 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
 
     recorder.start();
 
-    timerIntervalRef.current = setInterval(() => {
+    // FIX: Changed to `window.setInterval` to resolve a type conflict where TypeScript
+    // was inferring the return type as NodeJS.Timeout instead of a number.
+    timerIntervalRef.current = window.setInterval(() => {
       setTimer(prev => {
         if (prev <= 1) {
           stopRecording();
@@ -86,7 +88,7 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
       mediaRecorderRef.current.stop();
     }
     if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
+      window.clearInterval(timerIntervalRef.current);
     }
     setStatus('stopped');
   };
@@ -106,7 +108,7 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
+        window.clearInterval(timerIntervalRef.current);
       }
       stream?.getTracks().forEach(track => track.stop());
     };

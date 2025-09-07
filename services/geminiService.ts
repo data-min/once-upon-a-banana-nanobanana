@@ -4,6 +4,7 @@ import { InitialIdea, Page, Book, Revision, CaptureData, GeneratedBook } from '.
 import { compressImageBase64 } from "../utils/imageUtils";
 
 const API_KEY = process.env.API_KEY;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 
 if (!API_KEY) {
   throw new Error("API_KEY environment variable is not set");
@@ -13,6 +14,47 @@ const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const textModel = 'gemini-2.5-flash';
 const visionModel = 'gemini-2.5-flash-image-preview';
+const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel
+
+async function generateAudio(text: string): Promise<string> {
+    if (!ELEVENLABS_API_KEY) {
+        console.warn("ElevenLabs API key not provided. Skipping audio generation.");
+        return '';
+    }
+    if (!text.trim()) {
+        return ''; // Don't generate audio for empty text
+    }
+    try {
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'audio/mpeg',
+                'Content-Type': 'application/json',
+                'xi-api-key': ELEVENLABS_API_KEY,
+            },
+            body: JSON.stringify({
+                text: text,
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.75,
+                },
+            }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error(`ElevenLabs API request failed with status ${response.status}: ${errorBody}`);
+            return '';
+        }
+
+        const audioBlob = await response.blob();
+        return URL.createObjectURL(audioBlob);
+    } catch (error) {
+        console.error("Failed to generate audio:", error);
+        return '';
+    }
+}
 
 const getAgeAppropriateInstructions = (age: number): string => {
   if (age <= 5) {
@@ -213,11 +255,15 @@ export async function generateCoverAndFirstPage(idea: InitialIdea, age: number, 
 
     onProgress('Step 3/3: Illustrating the first page...');
     const firstPageImagePrompt = `An illustration for the very first page of a story, which must be different from the cover. The scene is: "${firstPageText}". The characters are: ${characters}. Maintain the same art style and character design as the provided reference image. The visual complexity must be appropriate for a ${age}-year-old. IMPORTANT: Do NOT include any text, letters, or words in this image.`;
-    const firstPageImageBase64 = await generateImage(
-        firstPageImagePrompt,
-        style,
-        { base64: coverImageBase64, mimeType: 'image/png' } // Use cover as reference
-    );
+    
+    const [firstPageImageBase64, firstPageAudioUrl] = await Promise.all([
+        generateImage(
+            firstPageImagePrompt,
+            style,
+            { base64: coverImageBase64, mimeType: 'image/png' } // Use cover as reference
+        ),
+        generateAudio(firstPageText)
+    ]);
     
     return {
         title,
@@ -229,7 +275,8 @@ export async function generateCoverAndFirstPage(idea: InitialIdea, age: number, 
             revisions: [{
                 text: firstPageText,
                 imageUrl: await processAndCompressImage(firstPageImageBase64),
-                type: 'initial'
+                type: 'initial',
+                audioUrl: firstPageAudioUrl
             }],
             currentRevisionIndex: 0
         }
@@ -250,11 +297,14 @@ async function generateCoverAndFirstPageFromCapture(capture: CaptureData, age: n
         { base64: capture.base64, mimeType: capture.mimeType }
     );
 
-    const firstPageImageBase64 = await generateImage(
-        `${imagePrompt} The characters are: ${characters}. This illustration is for the first page, not the cover. IMPORTANT: Do not include any text, letters, or words in this image.`, 
-        styleInstruction,
-        { base64: coverImageBase64, mimeType: 'image/png' } // Use cover for consistency
-    );
+    const [firstPageImageBase64, firstPageAudioUrl] = await Promise.all([
+        generateImage(
+            `${imagePrompt} The characters are: ${characters}. This illustration is for the first page, not the cover. IMPORTANT: Do not include any text, letters, or words in this image.`, 
+            styleInstruction,
+            { base64: coverImageBase64, mimeType: 'image/png' } // Use cover for consistency
+        ),
+        generateAudio(pageText)
+    ]);
     
     return {
         title: title || 'A Wonderful Story',
@@ -268,6 +318,7 @@ async function generateCoverAndFirstPageFromCapture(capture: CaptureData, age: n
                 imageUrl: await processAndCompressImage(firstPageImageBase64),
                 type: 'initial',
                 capture: capture,
+                audioUrl: firstPageAudioUrl
             }],
             currentRevisionIndex: 0
         }
@@ -331,6 +382,11 @@ export async function generateFullBook(idea: InitialIdea, age: number, style: st
 
     const bookData = JSON.parse(response.text);
 
+    if (!bookData.pages || !Array.isArray(bookData.pages)) {
+        console.error("AI response for full book is missing or has malformed pages data.", bookData);
+        throw new Error("The AI failed to create a valid story structure. Please try again with a different prompt.");
+    }
+
     onProgress('Step 2/3: Designing the beautiful cover...');
     const initialReference = idea.imageBase64 && idea.imageMimeType
         ? { base64: idea.imageBase64, mimeType: idea.imageMimeType }
@@ -339,26 +395,31 @@ export async function generateFullBook(idea: InitialIdea, age: number, style: st
     const coverImagePrompt = `A beautiful illustration for the cover of a children's book. The book title is "${bookData.title}". This title MUST be written clearly and creatively on the image. The scene should feature the characters: ${bookData.characters}. The visual complexity must be appropriate for a ${age}-year-old.`;
     const coverImageBase64 = await generateImage(coverImagePrompt, style, initialReference);
 
-    const pages: Page[] = [];
+    const pagesWithImages: Page[] = [];
     let previousImage = { base64: coverImageBase64, mimeType: 'image/png' };
 
     onProgress(`Step 3/3: Illustrating ${bookData.pages.length} pages...`);
     for (const pageContent of bookData.pages) {
         const consistencyPrompt = " Maintain the same art style and character design as the provided reference image. IMPORTANT: Do not add any text, letters, or words to the image.";
-        const imageBase64 = await generateImage(
-            `${pageContent.imagePrompt} The characters are: ${bookData.characters}.${consistencyPrompt}`,
-            style,
-            previousImage
-        );
+        
+        const [imageBase64, audioUrl] = await Promise.all([
+            generateImage(
+                `${pageContent.imagePrompt} The characters are: ${bookData.characters}.${consistencyPrompt}`,
+                style,
+                previousImage
+            ),
+            generateAudio(pageContent.pageText)
+        ]);
         
         previousImage = { base64: imageBase64, mimeType: 'image/png' }; // Update for next loop
 
-        pages.push({
+        pagesWithImages.push({
             id: generateId(),
             revisions: [{
                 text: pageContent.pageText,
                 imageUrl: await processAndCompressImage(imageBase64),
                 type: 'initial',
+                audioUrl: audioUrl,
             }],
             currentRevisionIndex: 0,
         });
@@ -371,7 +432,7 @@ export async function generateFullBook(idea: InitialIdea, age: number, style: st
         subtitle: bookData.subtitle,
         characters: bookData.characters,
         coverImageUrl: await processAndCompressImage(coverImageBase64),
-        pages: pages,
+        pages: pagesWithImages,
         age,
         style,
     };
@@ -435,11 +496,15 @@ export async function generateNextPage(book: Book, nextIdea: InitialIdea, age: n
     const referenceImage = { base64, mimeType };
 
     const consistencyPrompt = " Maintain the same art style and character design as the provided reference image. IMPORTANT: Do not add any text, letters, or words to the image.";
-    const imageBase64 = await generateImage(
-        `${imagePrompt} The characters are: ${book.characters}.${consistencyPrompt}`,
-        style,
-        referenceImage
-    );
+    
+    const [imageBase64, audioUrl] = await Promise.all([
+        generateImage(
+            `${imagePrompt} The characters are: ${book.characters}.${consistencyPrompt}`,
+            style,
+            referenceImage
+        ),
+        generateAudio(nextPageText)
+    ]);
 
     return {
         id: generateId(),
@@ -447,6 +512,7 @@ export async function generateNextPage(book: Book, nextIdea: InitialIdea, age: n
             text: nextPageText,
             imageUrl: await processAndCompressImage(imageBase64),
             type: 'initial',
+            audioUrl: audioUrl,
         }],
         currentRevisionIndex: 0,
     };
@@ -470,11 +536,14 @@ async function generateNextPageFromCapture(book: Book, capture: CaptureData, age
         ? "Mimic the simple, charming style of the provided child's drawing."
         : style;
     
-    const imageBase64 = await generateImage(
-        `${imagePrompt} The characters are: ${book.characters}. IMPORTANT: Do not add any text, letters, or words to the image.`,
-        styleInstruction,
-        referenceImage
-    );
+    const [imageBase64, audioUrl] = await Promise.all([
+        generateImage(
+            `${imagePrompt} The characters are: ${book.characters}. IMPORTANT: Do not add any text, letters, or words to the image.`,
+            styleInstruction,
+            referenceImage
+        ),
+        generateAudio(pageText)
+    ]);
 
     return {
         id: generateId(),
@@ -483,6 +552,7 @@ async function generateNextPageFromCapture(book: Book, capture: CaptureData, age
             imageUrl: await processAndCompressImage(imageBase64),
             type: 'initial',
             capture,
+            audioUrl,
         }],
         currentRevisionIndex: 0,
     };
@@ -532,11 +602,15 @@ export async function generateStoryEnding(book: Book, age: number, style: string
     const referenceImage = { base64, mimeType };
 
     const consistencyPrompt = " Maintain the same art style and character design as the provided reference image. IMPORTANT: Do not add any text, letters, or words to the image.";
-    const imageBase64 = await generateImage(
-        `${imagePrompt} The characters are: ${book.characters}.${consistencyPrompt}`,
-        style,
-        referenceImage
-    );
+    
+    const [imageBase64, audioUrl] = await Promise.all([
+        generateImage(
+            `${imagePrompt} The characters are: ${book.characters}.${consistencyPrompt}`,
+            style,
+            referenceImage
+        ),
+        generateAudio(finalPageText)
+    ]);
 
     return {
         id: generateId(),
@@ -544,6 +618,7 @@ export async function generateStoryEnding(book: Book, age: number, style: string
             text: finalPageText,
             imageUrl: await processAndCompressImage(imageBase64),
             type: 'initial',
+            audioUrl: audioUrl,
         }],
         currentRevisionIndex: 0,
     };
@@ -568,6 +643,7 @@ export async function revisePage(page: Page, revisionPromptOrCapture: string | C
 
     let newText = currentRevision.text;
     let newImageUrl: string;
+    let newAudioUrl = currentRevision.audioUrl;
 
     if (revisionType === 'text') {
         const prompt = `
@@ -585,15 +661,20 @@ export async function revisePage(page: Page, revisionPromptOrCapture: string | C
         newText = response.text.trim();
         
         const imagePrompt = `An illustration for the scene: "${newText}".${characterInfo} Maintain the style of the provided image. IMPORTANT: Do not add any text, letters, or words to the image.`;
-        const imageBase64 = await generateImage(imagePrompt, style, referenceImage);
+        const [imageBase64, audioUrl] = await Promise.all([
+            generateImage(imagePrompt, style, referenceImage),
+            generateAudio(newText)
+        ]);
         newImageUrl = await processAndCompressImage(imageBase64);
+        newAudioUrl = audioUrl;
+
     } else { // 'image'
         const imagePrompt = `${revisionPromptOrCapture}.${characterInfo} IMPORTANT: Do not add any text, letters, or words to the image.`;
         const imageBase64 = await generateImage(imagePrompt, style, referenceImage);
         newImageUrl = await processAndCompressImage(imageBase64);
     }
     
-    return { newRevision: { text: newText, imageUrl: newImageUrl, type: revisionType } };
+    return { newRevision: { text: newText, imageUrl: newImageUrl, type: revisionType, audioUrl: newAudioUrl } };
 }
 
 export async function reviseCoverImage(book: Book, revisionPrompt: string): Promise<{ newCoverImageUrl: string }> {
@@ -630,64 +711,38 @@ async function revisePageFromCapture(page: Page, capture: CaptureData, age: numb
         ? "Mimic the simple, charming style of the provided child's drawing."
         : style;
     
-    const imageBase64 = await generateImage(
-        `${imagePrompt} The characters are: ${characters}. IMPORTANT: Do not add any text, letters, or words to the image.`,
-        styleInstruction,
-        referenceImage
-    );
+    const [imageBase64, audioUrl] = await Promise.all([
+        generateImage(
+            `${imagePrompt} The characters are: ${characters}. IMPORTANT: Do not add any text, letters, or words to the image.`,
+            styleInstruction,
+            referenceImage
+        ),
+        generateAudio(pageText)
+    ]);
     
     const newRevision: Revision = {
         text: pageText,
         imageUrl: await processAndCompressImage(imageBase64),
         type: 'text', // Capture revisions can change both text and image
         capture,
+        audioUrl,
     };
     
     return { newRevision };
 }
 
-async function createSafeVideoPrompt(pageText: string): Promise<string> {
-    const prompt = `
-        You are an AI Safety Guard. Your only job is to rewrite a story sentence into an ultra-safe, simple, positive, and child-friendly visual prompt for a video AI. You must be extremely cautious. Failure to follow these rules will result in a failed video.
-
-        **NON-NEGOTIABLE RULES:**
-
-        1.  **ABSOLUTE POSITIVITY:** The output MUST be gentle, happy, and describe a single, clear, positive action. There can be NO conflict, NO sadness, NO fear, NO danger, not even implied.
-        2.  **MANDATORY WORD REPLACEMENT (NO EXCEPTIONS - THIS IS CRITICAL):**
-            *   "fight", "battle", "attack", "hit", "scary", "afraid", "danger", "chase", "mean" -> "playful dance", "happy game", "silly wiggle", "gentle tag"
-            *   "cried", "sad", "lost", "alone", "dark", "night", "storm", "scared" -> "giggling", "thinking", "exploring", "on a fun adventure", "sparkling", "starry sky", "gentle rain"
-            *   "monster", "dragon", "ghost", "villain" -> "big fluffy friend", "glowing magical pal", "silly flying creature", "playful character"
-            *   "fire", "burning", "explode", "crash", "fall" -> "warm glowing light", "colorful sparkles", "magical poof", "gentle landing"
-            *   "problem", "secret", "bad", "wrong", "trick" -> "fun puzzle", "happy surprise", "silly", "different", "fun game"
-        3.  **STRICT OUTPUT FORMAT:**
-            *   Your entire response must be ONLY the rewritten prompt. No preamble.
-            *   It must be a single, short sentence. (e.g., "A fluffy creature is dancing under a starry sky.")
-            *   It must describe a simple, visual action. (e.g., "A character is jumping on a soft cloud.")
-            *   It must be literal and concrete. NO metaphors. NO abstract ideas.
-
-        **Your Task:**
-        Rewrite the following text into a safe visual prompt, following all rules perfectly. Original Text: "${pageText}"
-    `;
-    const response = await ai.models.generateContent({
-        model: textModel,
-        contents: prompt,
-    });
-    return response.text.trim();
-}
-
 export async function generateSinglePageVideo(
     book: Book,
     page: Page,
+    onProgress: (message: string, percentage: number) => void
 ): Promise<{ videoUrl: string }> {
     const pageText = page.revisions[page.currentRevisionIndex].text;
-    const safePageDescription = await createSafeVideoPrompt(pageText);
 
     const videoPrompt = `
-        An animated video scene for a children's story, in the style of "${book.style}".
-        The scene is for a ${book.age}-year-old.
-        The animation should be magical, vibrant, and child-friendly, matching the reference image.
-        The video MUST include a voiceover of a friendly narrator reading the following text aloud: "${pageText}"
-        Animate this scene: "${safePageDescription}".
+        An animated video scene in the style of "${book.style}".
+        The animation should be magical, vibrant, and beautiful, suitable for a child aged ${book.age}.
+        The scene should match the provided reference image and be animated based on the text.
+        The video should be narrated by a friendly, warm voice reading the following text aloud: "${pageText}".
     `;
 
     const [header, base64] = page.revisions[page.currentRevisionIndex].imageUrl.split(',');
@@ -698,8 +753,9 @@ export async function generateSinglePageVideo(
         throw new Error(`Reference image for page video is invalid.`);
     }
 
+    onProgress('Sending request to the video model...', 5);
     let operation = await ai.models.generateVideos({
-        model: 'veo-2.0-generate-001',
+        model: 'veo-3.0-fast-generate-preview',
         prompt: videoPrompt,
         image: {
             imageBytes: referenceImage.base64,
@@ -710,49 +766,59 @@ export async function generateSinglePageVideo(
         }
     });
 
+    onProgress('Video generation started. This may take a few minutes.', 10);
+    const maxProgressFromApi = 95;
     while (!operation.done) {
         await new Promise(resolve => setTimeout(resolve, 10000));
         operation = await ai.operations.getVideosOperation({ operation: operation });
+        
+        if (operation.metadata) {
+            const metadata = operation.metadata as any;
+            const stateMessage = metadata.progressMessage || metadata.state || 'Processing...';
+            const apiPercentage = metadata.progressPercentage || 10;
+            const scaledPercentage = Math.min(maxProgressFromApi, 10 + (apiPercentage / 100) * (maxProgressFromApi - 10));
+            onProgress(stateMessage, scaledPercentage);
+        }
     }
+    
+    onProgress('Finalizing video...', maxProgressFromApi);
 
     if (operation.error) {
         console.error(`Video generation operation failed:`, operation.error);
         let detailedError = "An unknown error occurred.";
         const errorObj = operation.error as any;
 
-        // Check for a standard error message property
         if (errorObj && typeof errorObj.message === 'string' && errorObj.message) {
             detailedError = errorObj.message;
         } 
-        // If no message, try to stringify the whole object
         else if (errorObj) {
             try {
                 const stringifiedError = JSON.stringify(errorObj);
-                // Avoid showing an empty object
                 if (stringifiedError !== '{}') {
                     detailedError = stringifiedError;
                 }
             } catch (e) {
-                // Fallback if stringify fails (e.g., circular reference)
                 detailedError = "A complex error object was returned. See the browser console for details.";
             }
         }
 
-        let finalMessage = `Video generation failed: ${detailedError}`;
-
-        // Check for safety filter issues and provide a more specific message
-        if (detailedError.toLowerCase().includes('sensitive') || detailedError.toLowerCase().includes('safety') || detailedError.toLowerCase().includes('violate')) {
-            finalMessage = `The AI's safety filter blocked the video creation. We tried to rewrite the prompt automatically, but it was still flagged. Please try revising this page's text to be simpler and more positive.`;
-        }
-        
-        throw new Error(finalMessage);
+        throw new Error(`Video generation failed: ${detailedError}`);
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     if (!downloadLink) {
-        throw new Error(`Video generation finished, but no download link was found. This is often due to the prompt being blocked by safety filters.`);
+        throw new Error(`Video generation finished, but no download link was provided by the API.`);
     }
     
-    const videoUrl = `${downloadLink}&key=${API_KEY}`;
-    return { videoUrl };
+    onProgress('Fetching generated video...', 98);
+    const videoWithAudioUrl = `${downloadLink}&key=${API_KEY}`;
+    const response = await fetch(videoWithAudioUrl);
+    if (!response.ok) {
+        throw new Error(`Failed to download the generated video. Status: ${response.status}`);
+    }
+    const videoBlob = await response.blob();
+    const finalVideoUrl = URL.createObjectURL(videoBlob);
+    
+    onProgress('Complete!', 100);
+    return { videoUrl: finalVideoUrl };
 }
