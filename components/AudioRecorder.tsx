@@ -39,6 +39,7 @@ const AudioRecorder: React.FC = () => {
     // For audio, the transcript is the main payload. The image part is just a placeholder.
     const placeholderBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
+    // FIX: 'audio' was not a valid CaptureType. It has been added to the CaptureType union in types.ts.
     const captureData: CaptureData = {
       type: 'audio',
       base64: placeholderBase64,
@@ -52,7 +53,8 @@ const AudioRecorder: React.FC = () => {
     try {
       if (captureContext.from === 'input') {
         // FIX: Added the onProgress callback argument, which is required by the function signature.
-        const { title, subtitle, characters, coverImageUrl, firstPage } = await generateCoverAndFirstPage({ capture: captureData }, state.age, state.style, () => {});
+        // FIX: The `generateCoverAndFirstPage` function requires an `InitialIdea` object with a `media` property.
+        const { title, subtitle, characters, coverImageUrl, firstPage } = await generateCoverAndFirstPage({ media: [], capture: captureData }, state.age, state.style, () => {});
         dispatch({ type: 'GENERATION_SUCCESS', payload: { title, subtitle, characters, coverImageUrl, firstPage } });
       } else if (captureContext.from === 'creating' && captureContext.pageId) { // Revision
         if (!state.book) throw new Error("Book not found for revision");
@@ -62,7 +64,8 @@ const AudioRecorder: React.FC = () => {
         dispatch({ type: 'REVISION_SUCCESS', payload: { pageId: page.id, newRevision } });
       } else { // New Page
         if (!state.book) throw new Error("Book not found for new page");
-        const newPage = await generateNextPage(state.book, { capture: captureData }, state.age, state.style);
+        // FIX: The `generateNextPage` function requires an `InitialIdea` object with a `media` property.
+        const newPage = await generateNextPage(state.book, { media: [], capture: captureData }, state.age, state.style);
         dispatch({ type: 'ADD_PAGE_SUCCESS', payload: newPage });
       }
     } catch (err) {

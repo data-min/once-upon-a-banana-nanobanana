@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Book } from '../types';
 import { combineVideoScenes } from '../utils/videoGenerator';
@@ -23,15 +24,15 @@ const VideoGeneratorModal: React.FC<Props> = ({ book, onClose }) => {
                 // STAGE 1: FETCHING
                 setStage('fetching');
                 const sceneUrls = book.pages.map(p => p.videoUrl).filter((url): url is string => !!url);
-                if (sceneUrls.length !== book.pages.length) {
-                    throw new Error("Not all pages have a video generated. Please go back to the editor.");
+                if (sceneUrls.length === 0) {
+                    throw new Error("You haven't generated a video for any page yet. Please go back to the editor and create at least one page video.");
                 }
 
                 setMessage('Downloading video scenes...');
                 const videoBlobs: Blob[] = [];
                 for (let i = 0; i < sceneUrls.length; i++) {
                     const url = sceneUrls[i];
-                    setProgress(i / sceneUrls.length * 100);
+                    setProgress(i / sceneUrls.length * 50); // Fetching is first half
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`Failed to fetch scene ${i + 1}`);
                     videoBlobs.push(await response.blob());
@@ -41,9 +42,9 @@ const VideoGeneratorModal: React.FC<Props> = ({ book, onClose }) => {
                 // STAGE 2: COMBINING
                 setStage('combining');
                 setMessage('Stitching your story together...');
-                setProgress(0);
+                setProgress(50); // Start combining progress at 50%
                 const finalUrl = await combineVideoScenes(videoBlobUrls, (p, m) => {
-                    setProgress(p);
+                    setProgress(50 + p * 0.5); // Combining is second half
                     setMessage(m);
                 });
                 setFinalVideoUrl(finalUrl);
@@ -68,8 +69,8 @@ const VideoGeneratorModal: React.FC<Props> = ({ book, onClose }) => {
     const isGenerating = stage !== 'done' && stage !== 'error';
 
     const stageMessages: Record<Stage, string> = {
-        fetching: 'Step 1 of 2: Preparing Video Files',
-        combining: 'Step 2 of 2: Assembling Your Movie',
+        fetching: 'Preparing Video Files...',
+        combining: 'Assembling Your Movie...',
         done: 'Your video is ready!',
         error: 'Oh no! Something went wrong.'
     };

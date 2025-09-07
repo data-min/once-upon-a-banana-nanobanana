@@ -1,9 +1,10 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { useMediaRecorder, useSpeechRecognition } from '../utils/useMediaRecorder';
-import { generateCoverAndFirstPage, generateNextPage, revisePage } from '../services/geminiService';
+import { generateNextPage, revisePage } from '../services/geminiService';
 import Button from './Button';
-import { CaptureData } from '../types';
+import { CaptureData, MediaAttachment } from '../types';
+import { fileToBase64 } from '../utils/fileUtils';
 
 const VideoRecorder: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -42,11 +43,10 @@ const VideoRecorder: React.FC = () => {
     const videoBlob = getMediaBlob();
     if (!videoBlob || !captureContext) return;
     
-    // Extract a frame from the video
     const videoElement = document.createElement('video');
     videoElement.src = URL.createObjectURL(videoBlob);
     
-    videoElement.onloadeddata = async () => {
+    videoElement.onloadeddata = () => {
       videoElement.currentTime = 1; // Capture frame at 1 second
     };
 
@@ -58,36 +58,48 @@ const VideoRecorder: React.FC = () => {
         if (!ctx) return;
         ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
         const frameDataUrl = canvas.toDataURL('image/jpeg');
-        const [, base64] = frameDataUrl.split(',');
-
-        const captureData: CaptureData = {
-          type: 'video',
-          base64,
-          mimeType: 'image/jpeg',
-          transcript,
-          text: textPrompt,
-        };
-
-        dispatch({ type: 'START_GENERATION', payload: 'Interpreting your performance...' });
+        const [, frameBase64] = frameDataUrl.split(',');
 
         try {
-          if (captureContext.from === 'input') {
-            // FIX: Added the onProgress callback argument, which is required by the function signature.
-            const { title, subtitle, characters, coverImageUrl, firstPage } = await generateCoverAndFirstPage({ capture: captureData }, state.age, state.style, () => {});
-            dispatch({ type: 'GENERATION_SUCCESS', payload: { title, subtitle, characters, coverImageUrl, firstPage } });
-          } else if (captureContext.from === 'creating' && captureContext.pageId) { // Revision
-            if (!state.book) throw new Error("Book not found for revision");
-            const page = state.book.pages.find(p => p.id === captureContext.pageId);
-            if (!page) throw new Error("Page not found for revision");
-            const { newRevision } = await revisePage(page, captureData, state.age, state.style, 'text', state.book.characters);
-            dispatch({ type: 'REVISION_SUCCESS', payload: { pageId: page.id, newRevision } });
-          } else { // New Page
-            if (!state.book) throw new Error("Book not found for new page");
-            const newPage = await generateNextPage(state.book, { capture: captureData }, state.age, state.style);
-            dispatch({ type: 'ADD_PAGE_SUCCESS', payload: newPage });
-          }
+            if (captureContext.from === 'input') {
+                // FIX: The fileToBase64 utility expects a File object, not a Blob. Convert the Blob to a File before passing it.
+                const videoFile = new File([videoBlob], "recorded-video.webm", { type: videoBlob.type });
+                const { base64: fullVideoBase64, mimeType: fullVideoMimeType } = await fileToBase64(videoFile);
+                const mediaAttachment: MediaAttachment = {
+                    id: new Date().toISOString(),
+                    type: 'video',
+                    source: 'recording',
+                    base64: fullVideoBase64,
+                    mimeType: fullVideoMimeType,
+                    previewDataUrl: URL.createObjectURL(videoBlob),
+                    transcript,
+                };
+                dispatch({ type: 'ADD_MEDIA_TO_INITIAL_IDEA', payload: mediaAttachment });
+                dispatch({ type: 'SET_STEP', payload: 'input' });
+            } else {
+                 dispatch({ type: 'START_GENERATION', payload: 'Interpreting your performance...' });
+                const captureData: CaptureData = {
+                    type: 'video',
+                    base64: frameBase64,
+                    mimeType: 'image/jpeg',
+                    transcript,
+                    text: textPrompt,
+                };
+
+                if (captureContext.from === 'creating' && captureContext.pageId) { // Revision
+                    if (!state.book) throw new Error("Book not found for revision");
+                    const page = state.book.pages.find(p => p.id === captureContext.pageId);
+                    if (!page) throw new Error("Page not found for revision");
+                    const { newRevision } = await revisePage(page, captureData, state.age, state.style, 'text', state.book.characters);
+                    dispatch({ type: 'REVISION_SUCCESS', payload: { pageId: page.id, newRevision } });
+                } else { // New Page
+                    if (!state.book) throw new Error("Book not found for new page");
+                    const newPage = await generateNextPage(state.book, { text: textPrompt, media:[], capture: captureData }, state.age, state.style);
+                    dispatch({ type: 'ADD_PAGE_SUCCESS', payload: newPage });
+                }
+            }
         } catch (err) {
-          dispatch({ type: 'GENERATION_FAILURE', payload: err instanceof Error ? err.message : "Failed to generate from video" });
+            dispatch({ type: 'GENERATION_FAILURE', payload: err instanceof Error ? err.message : "Failed to generate from video" });
         }
     };
   };

@@ -7,8 +7,8 @@ const LandingPage: React.FC = () => {
 
   return (
     <div className="text-center animate-fade-in flex flex-col items-center justify-center min-h-[80vh]">
-      <h1 className="font-display text-7xl md:text-9xl text-cyan-500 drop-shadow-lg mb-4">
-        Create Your Own Book!
+      <h1 className="font-display text-6xl md:text-8xl text-cyan-500 drop-shadow-lg mb-4">
+        Once Upon a Banana 🍌
       </h1>
       <p className="font-body text-xl md:text-2xl text-gray-600 max-w-lg mx-auto mb-12">
         Turn your wildest ideas into magical stories and pictures with the help of a friendly AI!

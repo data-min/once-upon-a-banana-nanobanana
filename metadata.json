@@ -1,5 +1,5 @@
 {
-  "name": "MP Copy of AI Children's Storybook Generator",
+  "name": "Once Upon a Banana",
   "description": "An AI-powered children’s storytelling web application. The app allows kids to create their own illustrated books by combining text, image, or video prompts.",
   "requestFramePermissions": [
     "camera",

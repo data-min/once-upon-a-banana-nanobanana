@@ -1,4 +1,4 @@
-# AI Children's Storybook Generator
+# Once Upon a Banana
 
 An AI-powered children’s storytelling web application. The app allows kids to create their own illustrated books by combining text, image, drawing, voice, and video prompts.
 

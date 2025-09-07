@@ -1,6 +1,8 @@
-// FIX: Removed circular self-import that caused declaration conflicts.
+import { fileURLToPath } from "url";
+
 export type StoryPath = 'interactive' | 'full';
 
+// FIX: Added 'audio' to support audio recordings as a capture type.
 export type CaptureType = 'drawing' | 'video' | 'audio';
 
 export interface CaptureData {
@@ -12,12 +14,22 @@ export interface CaptureData {
     mimicStyle?: boolean;
 }
 
+export interface MediaAttachment {
+  id: string;
+  type: 'image' | 'video';
+  source: 'upload' | 'drawing' | 'recording';
+  base64: string;
+  mimeType: string;
+  previewDataUrl: string;
+  fileName?: string;
+  transcript?: string;
+  mimicStyle?: boolean;
+}
+
 export interface InitialIdea {
   text?: string;
-  imageBase64?: string;
-  imageMimeType?: string;
-  videoBase64?: string;
-  videoMimeType?: string;
+  media: MediaAttachment[];
+  // FIX: Added optional 'capture' property to allow passing real-time input data (drawing, video, audio) to generation services.
   capture?: CaptureData;
 }
 
@@ -26,7 +38,6 @@ export interface Revision {
     imageUrl: string;
     type: 'initial' | 'text' | 'image';
     capture?: CaptureData;
-    audioUrl?: string;
 }
 
 export interface Page {
@@ -46,6 +57,7 @@ export interface GeneratedBook {
     pages: Page[];
     age: number;
     style: string;
+    initialIdea?: InitialIdea;
 }
 
 export interface Book extends GeneratedBook {
@@ -54,6 +66,7 @@ export interface Book extends GeneratedBook {
     dedication?: string;
 }
 
+// FIX: Added 'recordingAudio' to support the audio recording step.
 export type AppStep = 'landing' | 'age' | 'path' | 'author' | 'input' | 'style' | 'creating' | 'finished' | 'library' | 'drawing' | 'recordingVideo' | 'recordingAudio';
 
 export interface AppState {
@@ -82,6 +95,7 @@ export type AppAction =
   | { type: 'SET_AUTHOR_NAME'; payload: string }
   | { type: 'SET_PATH'; payload: StoryPath }
   | { type: 'SET_INITIAL_IDEA'; payload: InitialIdea }
+  | { type: 'ADD_MEDIA_TO_INITIAL_IDEA'; payload: MediaAttachment }
   | { type: 'SET_STYLE'; payload: string }
   | { type: 'START_GENERATION'; payload: string }
   | { type: 'GENERATION_SUCCESS'; payload: { title: string; subtitle: string; characters: string; coverImageUrl: string; firstPage: Page } }
@@ -100,4 +114,5 @@ export type AppAction =
   | { type: 'START_REAL_TIME_INPUT'; payload: { mode: CaptureType; from: 'input' | 'creating'; pageId?: string; revisionType?: 'text' | 'image' } }
   | { type: 'CANCEL_REAL_TIME_INPUT' }
   | { type: 'GENERATE_PAGE_VIDEO_SUCCESS'; payload: { pageId: string; videoUrl: string } }
+  | { type: 'HYDRATE_VIDEO_URLS'; payload: { [pageId: string]: string } }
   | { type: 'RESET' };

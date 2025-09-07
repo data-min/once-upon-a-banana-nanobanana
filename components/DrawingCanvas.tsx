@@ -1,9 +1,9 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { useDrawingCanvas, DrawingTool } from '../utils/useDrawingCanvas';
-import { generateCoverAndFirstPage, generateNextPage, revisePage } from '../services/geminiService';
+import { generateNextPage, revisePage } from '../services/geminiService';
 import Button from './Button';
-import { CaptureData } from '../types';
+import { CaptureData, MediaAttachment } from '../types';
 
 const ToolButton: React.FC<{
     label: string;
@@ -50,33 +50,41 @@ const DrawingCanvas: React.FC = () => {
     }
     const snapshot = getSnapshot('image/png');
     if (!snapshot || !captureContext) return;
-
     const [, base64] = snapshot.split(',');
-    const captureData: CaptureData = {
-      type: 'drawing',
-      base64,
-      mimeType: 'image/png',
-      mimicStyle,
-      text: textPrompt,
-    };
-
-    dispatch({ type: 'START_GENERATION', payload: 'Bringing your drawing to life...' });
 
     try {
       if (captureContext.from === 'input') {
-        // FIX: Added the onProgress callback argument, which is required by the function signature.
-        const { title, subtitle, characters, coverImageUrl, firstPage } = await generateCoverAndFirstPage({ capture: captureData }, state.age, state.style, () => {});
-        dispatch({ type: 'GENERATION_SUCCESS', payload: { title, subtitle, characters, coverImageUrl, firstPage } });
-      } else if (captureContext.from === 'creating' && captureContext.pageId) { // Revision
-        if (!state.book) throw new Error("Book not found for revision");
-        const page = state.book.pages.find(p => p.id === captureContext.pageId);
-        if (!page) throw new Error("Page not found for revision");
-        const { newRevision } = await revisePage(page, captureData, state.age, state.style, 'text', state.book.characters);
-        dispatch({ type: 'REVISION_SUCCESS', payload: { pageId: page.id, newRevision } });
-      } else { // New Page
-        if (!state.book) throw new Error("Book not found for new page");
-        const newPage = await generateNextPage(state.book, { capture: captureData }, state.age, state.style);
-        dispatch({ type: 'ADD_PAGE_SUCCESS', payload: newPage });
+        const mediaAttachment: MediaAttachment = {
+            id: new Date().toISOString(),
+            type: 'image',
+            source: 'drawing',
+            base64,
+            mimeType: 'image/png',
+            previewDataUrl: snapshot,
+            mimicStyle,
+        };
+        dispatch({ type: 'ADD_MEDIA_TO_INITIAL_IDEA', payload: mediaAttachment });
+        dispatch({ type: 'SET_STEP', payload: 'input' });
+      } else {
+        dispatch({ type: 'START_GENERATION', payload: 'Bringing your drawing to life...' });
+        const captureData: CaptureData = {
+            type: 'drawing',
+            base64,
+            mimeType: 'image/png',
+            mimicStyle,
+            text: textPrompt,
+        };
+        if (captureContext.from === 'creating' && captureContext.pageId) { // Revision
+            if (!state.book) throw new Error("Book not found for revision");
+            const page = state.book.pages.find(p => p.id === captureContext.pageId);
+            if (!page) throw new Error("Page not found for revision");
+            const { newRevision } = await revisePage(page, captureData, state.age, state.style, 'text', state.book.characters);
+            dispatch({ type: 'REVISION_SUCCESS', payload: { pageId: page.id, newRevision } });
+        } else { // New Page
+            if (!state.book) throw new Error("Book not found for new page");
+            const newPage = await generateNextPage(state.book, { media:[], text: textPrompt, capture: captureData }, state.age, state.style);
+            dispatch({ type: 'ADD_PAGE_SUCCESS', payload: newPage });
+        }
       }
     } catch (err) {
       dispatch({ type: 'GENERATION_FAILURE', payload: err instanceof Error ? err.message : "Failed to generate from drawing" });

@@ -1,9 +1,10 @@
 
-import React, { useContext, useState } from 'react';
+
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import Button from './Button';
 import VideoGeneratorModal from './VideoGeneratorModal';
-import AudioPlayer from './AudioPlayer';
+import { getVideosForBook } from '../utils/videoDb';
 
 const BookViewer: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -14,6 +15,29 @@ const BookViewer: React.FC = () => {
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hasHydratedVideos, setHasHydratedVideos] = useState(false);
+
+  useEffect(() => {
+    if (book && !hasHydratedVideos) {
+      getVideosForBook(book.id).then(videoUrls => {
+        if (Object.keys(videoUrls).length > 0) {
+          dispatch({ type: 'HYDRATE_VIDEO_URLS', payload: videoUrls });
+        }
+        setHasHydratedVideos(true);
+      });
+    }
+    // Revoke old object URLs when the component unmounts or book changes
+    return () => {
+      if (book) {
+        book.pages.forEach(p => {
+          if (p.videoUrl && p.videoUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(p.videoUrl);
+          }
+        });
+      }
+    }
+  }, [book, hasHydratedVideos, dispatch]);
+
 
   if (!book) {
     return (
@@ -78,24 +102,25 @@ const BookViewer: React.FC = () => {
 
     return (
         <div className="w-full h-full flex flex-row items-stretch">
-            {/* Left Page: Image */}
+            {/* Left Page: Image or Video */}
             <div className="w-1/2 h-full flex items-center justify-center p-6 bg-white/50">
-                {revision.imageUrl && <img src={revision.imageUrl} alt={`Illustration for page ${pageIndex + 1}`} className="w-full h-full object-contain" />}
+                {page.videoUrl ? (
+                    <video src={page.videoUrl} controls className="w-full h-full object-contain" />
+                ) : (
+                    revision.imageUrl && <img src={revision.imageUrl} alt={`Illustration for page ${pageIndex + 1}`} className="w-full h-full object-contain" />
+                )}
             </div>
             {/* Right Page: Text */}
             <div className="w-1/2 h-full p-8 bg-amber-50 relative">
                 <div className="w-full h-full flex items-center justify-center">
                     {revision.text && <p className="font-body text-xl md:text-2xl leading-relaxed text-gray-700 max-w-prose text-left">{revision.text}</p>}
                 </div>
-                {revision.audioUrl && (
-                    <AudioPlayer src={revision.audioUrl} className="absolute top-6 right-6" />
-                )}
             </div>
         </div>
     );
   };
   
-  const allVideosGenerated = book.pages.every(p => !!p.videoUrl);
+  const hasAtLeastOneVideo = book.pages.some(p => !!p.videoUrl);
 
   const ActionButton: React.FC<{onClick: () => void, children: React.ReactNode, icon: string, disabled?: boolean}> = ({ onClick, children, icon, disabled }) => (
     <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-orange-600 bg-white/70 hover:bg-orange-100/80 rounded-full transition-all duration-200 shadow-sm font-body font-bold disabled:opacity-50 disabled:cursor-not-allowed" disabled={disabled}>
@@ -148,7 +173,7 @@ const BookViewer: React.FC = () => {
                 <>
                     <ActionButton onClick={handleBackToLibrary} icon="📚">My Library</ActionButton>
                     <ActionButton onClick={handleEditBook} icon="✏️">Edit Story</ActionButton>
-                    <ActionButton onClick={() => setShowVideoModal(true)} icon="🎬" disabled={!allVideosGenerated}>Create Full Story Video</ActionButton>
+                    <ActionButton onClick={() => setShowVideoModal(true)} icon="🎬" disabled={!hasAtLeastOneVideo}>Create Full Story Video</ActionButton>
                     <ActionButton onClick={() => setShowShareModal(true)} icon="🔗">Share Link</ActionButton>
                     <Button onClick={handleCreateNew} variant="primary">Create New</Button>
                 </>
@@ -163,8 +188,8 @@ const BookViewer: React.FC = () => {
 
         <Button variant="secondary" onClick={handleNext} disabled={currentPageIndex >= totalItems - 1}>Next</Button>
       </div>
-       {book.isFinished && !allVideosGenerated && <p className="text-center text-sm text-gray-500 mt-2">Edit this story to create a video for each page, then you can create the full story video.</p>}
-       {!book.isFinished && state.path === 'full' && !allVideosGenerated && (
+       {book.isFinished && !hasAtLeastOneVideo && <p className="text-center text-sm text-gray-500 mt-2">Edit this story to create a video for each page, then you can create the full story video.</p>}
+       {!book.isFinished && state.path === 'full' && (
             <p className="text-center text-sm text-gray-500 mt-2">You can now create a video for each page before finishing your book!</p>
        )}
     </div>

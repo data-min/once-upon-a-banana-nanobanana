@@ -1,10 +1,10 @@
-import React, { useContext, useState, useRef } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { generateNextPage, revisePage, generateStoryEnding, reviseCoverImage, generateSinglePageVideo } from '../services/geminiService';
 import Button from './Button';
-import { InitialIdea, Page, Book, CaptureType } from '../types';
+import { InitialIdea, Page, Book, CaptureType, MediaAttachment } from '../types';
 import { fileToBase64 } from '../utils/fileUtils';
-import AudioPlayer from './AudioPlayer';
+import { getVideosForBook } from '../utils/videoDb';
 
 const CoverRevisionModal: React.FC<{
   book: Book;
@@ -99,10 +99,7 @@ const RevisionModal: React.FC<{
                 </div>
                 <div className="flex items-center justify-center gap-4">
                      <button onClick={() => handleSelectRealTimeInput('drawing')} className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition text-sm">✏️ Draw</button>
-                     {/* FIX: The mode for START_REAL_TIME_INPUT should be a CaptureType, i.e., 'video' not 'recordingVideo'. */}
                      <button onClick={() => handleSelectRealTimeInput('video')} className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition text-sm">📹 Record</button>
-                     {/* FIX: The mode for START_REAL_TIME_INPUT should be a CaptureType, i.e., 'audio' not 'recordingAudio'. */}
-                     <button onClick={() => handleSelectRealTimeInput('audio')} className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition text-sm">🎙️ Speak</button>
                 </div>
                 <div className="flex justify-end gap-4 mt-6">
                     <Button onClick={onClose} variant="secondary" className="text-xl px-6 py-2" disabled={isRevising}>Cancel</Button>
@@ -136,13 +133,20 @@ const NextPageModal: React.FC<{
 
   const handleSubmit = async () => {
     if (!text && !image) return;
-    let idea: InitialIdea = { text };
+    let mediaAttachments: MediaAttachment[] = [];
     if (image) {
       const { base64, mimeType } = await fileToBase64(image.file);
-      idea.imageBase64 = base64;
-      idea.imageMimeType = mimeType;
+      mediaAttachments.push({
+          id: new Date().toISOString(),
+          type: 'image',
+          source: 'upload',
+          base64,
+          mimeType,
+          previewDataUrl: image.preview,
+          fileName: image.file.name,
+      });
     }
-    await onSubmit(idea);
+    await onSubmit({ text, media: mediaAttachments });
   };
 
   const handleSelectRealTimeInput = (mode: CaptureType) => {
@@ -173,10 +177,7 @@ const NextPageModal: React.FC<{
             </div>
             <div className="flex items-center justify-center gap-4">
                  <button onClick={() => handleSelectRealTimeInput('drawing')} className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition">✏️ Draw</button>
-                 {/* FIX: The mode for START_REAL_TIME_INPUT should be a CaptureType, i.e., 'video' not 'recordingVideo'. */}
                  <button onClick={() => handleSelectRealTimeInput('video')} className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition">📹 Record</button>
-                 {/* FIX: The mode for START_REAL_TIME_INPUT should be a CaptureType, i.e., 'audio' not 'recordingAudio'. */}
-                 <button onClick={() => handleSelectRealTimeInput('audio')} className="flex items-center gap-2 px-3 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition">🎙️ Speak</button>
             </div>
             {image && (
                 <div className="mt-4 text-center">
@@ -198,10 +199,38 @@ const ReviewModal: React.FC<{
   book: Book;
   onCancel: () => void;
   onConfirm: () => void;
-}> = ({ book, onCancel, onConfirm }) => (
+}> = ({ book, onCancel, onConfirm }) => {
+    const initialMedia = book.initialIdea?.media || [];
+
+    return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-fade-in">
-        <div className="bg-amber-50 rounded-2xl p-8 max-w-3xl w-full shadow-2xl border-4 border-white">
+        <div className="bg-amber-50 rounded-2xl p-8 max-w-4xl w-full shadow-2xl border-4 border-white">
             <h3 className="font-display text-4xl text-orange-500 mb-6 text-center">Review Your Masterpiece!</h3>
+            
+            {initialMedia.length > 0 && (
+                <>
+                    <h4 className="font-display text-2xl text-cyan-600 mb-2 text-left">Your Ideas:</h4>
+                    <div className="flex overflow-x-auto gap-4 p-4 mb-6 bg-white/50 rounded-lg">
+                        {initialMedia.map((item) => {
+                            // Construct a persistent data URL from the stored base64 content.
+                            // This avoids issues with temporary blob URLs being revoked.
+                            const dataUrl = `data:${item.mimeType};base64,${item.base64}`;
+                            return (
+                                <div key={item.id} className="flex-shrink-0 w-32 text-center font-body">
+                                    {item.type === 'image' && <img src={dataUrl} alt="Initial idea" className="w-full aspect-square object-cover rounded-md shadow-md mb-2" />}
+                                    {item.type === 'video' && <video src={dataUrl} muted loop autoPlay playsInline className="w-full aspect-square object-cover rounded-md shadow-md mb-2" />}
+                                    <p className="text-sm font-bold text-gray-700 truncate">
+                                        {item.source === 'drawing' ? 'Your Drawing' : item.source === 'recording' ? 'Your Video' : item.fileName || 'Uploaded Idea'}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <hr className="my-4 border-orange-200" />
+                </>
+            )}
+
+            <h4 className="font-display text-2xl text-cyan-600 mb-2 text-left">Your Story:</h4>
             <div className="flex overflow-x-auto gap-4 p-4 bg-white/50 rounded-lg">
                 <div className="flex-shrink-0 w-32 text-center font-body">
                     <img src={book.coverImageUrl} alt="Cover" className="w-full aspect-[4/5] object-cover rounded-md shadow-md mb-2" />
@@ -220,7 +249,8 @@ const ReviewModal: React.FC<{
             </div>
         </div>
     </div>
-);
+    );
+};
 
 const StoryCreator: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -229,8 +259,30 @@ const StoryCreator: React.FC = () => {
   const [showNextPageModal, setShowNextPageModal] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
   const [videoGenerationProgress, setVideoGenerationProgress] = useState<{ [pageId: string]: { message: string; percentage: number } }>({});
-  
+  const [hasHydratedVideos, setHasHydratedVideos] = useState(false);
+
   const { book, currentPageIndex } = state;
+
+  useEffect(() => {
+    if (book && !hasHydratedVideos) {
+        getVideosForBook(book.id).then(videoUrls => {
+            if (Object.keys(videoUrls).length > 0) {
+                dispatch({ type: 'HYDRATE_VIDEO_URLS', payload: videoUrls });
+            }
+            setHasHydratedVideos(true);
+        });
+    }
+    // Cleanup function to revoke URLs when the component unmounts or book changes
+    return () => {
+        if (book) {
+            book.pages.forEach(p => {
+                if (p.videoUrl && p.videoUrl.startsWith('blob:')) {
+                    URL.revokeObjectURL(p.videoUrl);
+                }
+            });
+        }
+    };
+  }, [book, hasHydratedVideos, dispatch]);
 
   const isCoverView = currentPageIndex === 0;
   const pageArrayIndex = currentPageIndex - 1;
@@ -273,27 +325,27 @@ const StoryCreator: React.FC = () => {
     dispatch({ type: 'SET_ACTIVE_REVISION', payload: { pageId: currentPage.id, revisionIndex: index } });
   };
   
-  const handleGenerateVideoForPage = async (page: Page) => {
-      if (!book || videoGenerationProgress[page.id]) return;
+  const handleGenerateVideo = async (pageToProcess: Page) => {
+      if (!book || !pageToProcess || videoGenerationProgress[pageToProcess.id]) return;
 
       const onProgress = (message: string, percentage: number) => {
           setVideoGenerationProgress(prev => ({
               ...prev,
-              [page.id]: { message, percentage }
+              [pageToProcess.id]: { message, percentage }
           }));
       };
 
       onProgress('Preparing to generate...', 0);
 
       try {
-          const { videoUrl } = await generateSinglePageVideo(book, page, onProgress);
-          dispatch({ type: 'GENERATE_PAGE_VIDEO_SUCCESS', payload: { pageId: page.id, videoUrl } });
+          const { videoUrl } = await generateSinglePageVideo(book, pageToProcess, onProgress);
+          dispatch({ type: 'GENERATE_PAGE_VIDEO_SUCCESS', payload: { pageId: pageToProcess.id, videoUrl } });
       } catch (err) {
           dispatch({ type: 'GENERATION_FAILURE', payload: err instanceof Error ? err.message : 'Failed to create page video.' });
       } finally {
           setVideoGenerationProgress(prev => {
               const newProgress = { ...prev };
-              delete newProgress[page.id];
+              delete newProgress[pageToProcess.id];
               return newProgress;
           });
       }
@@ -320,6 +372,7 @@ const StoryCreator: React.FC = () => {
         {showCoverRevisionModal && <CoverRevisionModal book={book} onClose={() => setShowCoverRevisionModal(false)} />}
         {showNextPageModal && <NextPageModal onSubmit={handleGenerateNextPage} onClose={() => setShowNextPageModal(false)} />}
         {isReviewing && book && <ReviewModal book={book} onCancel={() => setIsReviewing(false)} onConfirm={handleConfirmFinish} />}
+
 
         <h2 className="font-display text-center text-5xl md:text-7xl text-cyan-500 mb-2">{book.title}</h2>
         <p className="text-center font-body text-xl text-gray-500 mb-8">
@@ -348,11 +401,8 @@ const StoryCreator: React.FC = () => {
                                 <button onClick={() => handleSetActiveRevision(currentPage!.currentRevisionIndex + 1)} disabled={currentPage!.currentRevisionIndex === currentPage!.revisions.length - 1} className="px-3 py-1 bg-white rounded-md shadow disabled:opacity-50">›</button>
                             </div>
                         )}
-                        <div className="flex flex-wrap gap-2 items-end">
+                        <div className="flex flex-wrap gap-4 items-center">
                             <button onClick={() => setShowRevisionModal(true)} className="px-4 py-2 bg-orange-200 text-orange-800 rounded-lg">Revise Page</button>
-                            {currentRevision?.audioUrl && (
-                                <AudioPlayer src={currentRevision.audioUrl} />
-                            )}
                              {currentPage.videoUrl ? (
                                 <video src={currentPage.videoUrl} controls className="w-full max-w-xs rounded-lg shadow-md mt-4"></video>
                             ) : pageVideoProgress ? (
@@ -364,7 +414,7 @@ const StoryCreator: React.FC = () => {
                                     <p className="font-body text-xs text-purple-700 truncate">{pageVideoProgress.message}</p>
                                 </div>
                             ) : (
-                                <button onClick={() => handleGenerateVideoForPage(currentPage)} className="px-4 py-2 bg-purple-200 text-purple-800 rounded-lg flex items-center gap-2">
+                                <button onClick={() => handleGenerateVideo(currentPage)} className="px-4 py-2 bg-purple-200 text-purple-800 rounded-lg flex items-center gap-2">
                                     🎬 Create Page Video
                                 </button>
                             )}

@@ -1,6 +1,5 @@
 import React, { createContext, useReducer, Dispatch, ReactNode } from 'react';
-// FIX: Imported all necessary types from `types.ts` to resolve module errors.
-import { AppState, AppAction, Book, CaptureType, GeneratedBook } from '../types';
+import { AppState, AppAction, Book, CaptureType, GeneratedBook, MediaAttachment } from '../types';
 import { DEFAULT_AGE } from '../constants';
 import { loadLibraryFromStorage, saveLibraryToStorage } from '../utils/libraryUtils';
 
@@ -9,7 +8,7 @@ const initialState: AppState = {
   age: DEFAULT_AGE,
   authorName: '',
   path: null,
-  initialIdea: {},
+  initialIdea: { text: '', media: [] },
   style: '',
   book: null,
   isLoading: false,
@@ -45,6 +44,14 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       return { ...state, path: action.payload };
     case 'SET_INITIAL_IDEA':
       return { ...state, initialIdea: action.payload };
+    case 'ADD_MEDIA_TO_INITIAL_IDEA':
+       return {
+        ...state,
+        initialIdea: {
+          ...state.initialIdea,
+          media: [...state.initialIdea.media, action.payload],
+        },
+      };
     case 'SET_STYLE':
       return { ...state, style: action.payload };
     case 'START_GENERATION':
@@ -63,10 +70,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         coverImageUrl: action.payload.coverImageUrl,
         pages: [action.payload.firstPage],
         isFinished: false,
+        initialIdea: state.initialIdea,
       };
       const newLibrary = updateLibrary(state.library, newBook);
       // Start at index 0, which is the cover view
-      return { ...state, isLoading: false, book: newBook, step: 'creating', currentPageIndex: 0, library: newLibrary, captureContext: null };
+      return { ...state, isLoading: false, book: newBook, step: 'creating', currentPageIndex: 0, library: newLibrary, captureContext: null, initialIdea: { text: '', media: [] } };
     }
     
     case 'FULL_BOOK_GENERATION_SUCCESS': {
@@ -77,16 +85,18 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             style: state.style,
             author: state.authorName,
             isFinished: false, // Not finished until confirmed in viewer
+            initialIdea: state.initialIdea,
         };
         const newLibrary = updateLibrary(state.library, newBook);
         return { 
             ...state, 
             isLoading: false, 
             book: newBook, 
-            step: 'finished', // Go directly to the viewer for a full book
-            currentPageIndex: 0,
+            step: 'creating', // Go to the editor to allow for revisions
+            currentPageIndex: 0, // Start at the cover
             library: newLibrary,
             captureContext: null,
+            initialIdea: { text: '', media: [] },
         };
     }
     
@@ -227,11 +237,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     }
       
     case 'START_REAL_TIME_INPUT': {
-        // FIX: The keys of this map must be of type CaptureType ('drawing', 'video', 'audio').
+        // FIX: Add 'audio' to the map to handle all CaptureType options.
         const nextStepMap: Record<CaptureType, AppState['step']> = {
             drawing: 'drawing',
             video: 'recordingVideo',
-            audio: 'recordingAudio'
+            audio: 'recordingAudio',
         };
         return {
             ...state,
@@ -267,6 +277,22 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             isLoading: false,
             book: updatedBook,
             library: newLibrary,
+        };
+    }
+
+    case 'HYDRATE_VIDEO_URLS': {
+        if (!state.book) return state;
+        const videoUrls = action.payload;
+        const updatedPages = state.book.pages.map(p => {
+            if (videoUrls[p.id]) {
+                return { ...p, videoUrl: videoUrls[p.id] };
+            }
+            return p;
+        });
+        const updatedBook = { ...state.book, pages: updatedPages };
+        return {
+            ...state,
+            book: updatedBook,
         };
     }
 

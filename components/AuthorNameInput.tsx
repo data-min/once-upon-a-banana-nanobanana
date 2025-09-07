@@ -22,7 +22,6 @@ const AuthorNameInput: React.FC = () => {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Lily"
           className="w-full p-4 font-body text-2xl border-2 text-center border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-400 focus:outline-none"
         />
         <p className="font-body text-gray-500 mt-4">This will be shown on the cover of your book!</p>

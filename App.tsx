@@ -12,6 +12,7 @@ import LoadingScreen from './components/LoadingScreen';
 import Library from './components/Library';
 import DrawingCanvas from './components/DrawingCanvas';
 import VideoRecorder from './components/VideoRecorder';
+// FIX: Import AudioRecorder to handle the new 'recordingAudio' step.
 import AudioRecorder from './components/AudioRecorder';
 
 const App: React.FC = () => {
@@ -45,6 +46,7 @@ const App: React.FC = () => {
         return <DrawingCanvas />;
       case 'recordingVideo':
         return <VideoRecorder />;
+      // FIX: Add case for 'recordingAudio' to render the AudioRecorder component.
       case 'recordingAudio':
         return <AudioRecorder />;
       default:
