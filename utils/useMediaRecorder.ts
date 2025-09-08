@@ -15,15 +15,13 @@ interface SpeechRecognition {
 
 type RecorderStatus = 'idle' | 'permission' | 'recording' | 'stopped' | 'error';
 
-export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number }) => {
-  const { isVideo, timeLimit = 30 } = options;
+export const useMediaRecorder = (options: { isVideo: boolean }) => {
+  const { isVideo } = options;
   const [status, setStatus] = useState<RecorderStatus>('idle');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [timer, setTimer] = useState(timeLimit);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const timerIntervalRef = useRef<number | null>(null);
 
   const getPermissions = async () => {
     setStatus('permission');
@@ -50,7 +48,6 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
     if (!currentStream) return;
 
     setStatus('recording');
-    setTimer(timeLimit);
     chunksRef.current = [];
 
     const recorder = new MediaRecorder(currentStream);
@@ -69,26 +66,11 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
     };
 
     recorder.start();
-
-    // FIX: Changed to `window.setInterval` to resolve a type conflict where TypeScript
-    // was inferring the return type as NodeJS.Timeout instead of a number.
-    timerIntervalRef.current = window.setInterval(() => {
-      setTimer(prev => {
-        if (prev <= 1) {
-          stopRecording();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
-    }
-    if (timerIntervalRef.current) {
-      window.clearInterval(timerIntervalRef.current);
     }
     setStatus('stopped');
   };
@@ -102,19 +84,15 @@ export const useMediaRecorder = (options: { isVideo: boolean; timeLimit?: number
   const reset = () => {
     setStatus('idle');
     setError(null);
-    setTimer(timeLimit);
   }
 
   useEffect(() => {
     return () => {
-      if (timerIntervalRef.current) {
-        window.clearInterval(timerIntervalRef.current);
-      }
       stream?.getTracks().forEach(track => track.stop());
     };
   }, [stream]);
 
-  return { status, startRecording, stopRecording, getMediaBlob, timer, error, reset, stream };
+  return { status, startRecording, stopRecording, getMediaBlob, error, reset, stream };
 };
 
 // Simple Web Speech API Hook for transcription

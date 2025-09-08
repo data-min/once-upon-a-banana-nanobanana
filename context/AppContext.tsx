@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, Dispatch, ReactNode } from 'react';
+import React, { createContext, useReducer, Dispatch, ReactNode, useEffect, useRef } from 'react';
 import { AppState, AppAction, Book, CaptureType, GeneratedBook, MediaAttachment } from '../types';
 import { DEFAULT_AGE } from '../constants';
 import { loadLibraryFromStorage, saveLibraryToStorage } from '../utils/libraryUtils';
@@ -15,27 +15,17 @@ const initialState: AppState = {
   loadingMessage: 'Getting ready...',
   error: null,
   currentPageIndex: 0,
-  library: loadLibraryFromStorage(),
+  library: [],
+  isLibraryLoaded: false,
   captureContext: null,
-};
-
-const updateLibrary = (library: Book[], book: Book | null): Book[] => {
-    if (!book) return library;
-    const bookIndex = library.findIndex(b => b.id === book.id);
-    const newLibrary = [...library];
-    if (bookIndex > -1) {
-        newLibrary[bookIndex] = book;
-    } else {
-        newLibrary.push(book);
-    }
-    saveLibraryToStorage(newLibrary);
-    return newLibrary;
 };
 
 const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
     case 'SET_STEP':
       return { ...state, step: action.payload };
+    case 'SET_LIBRARY':
+      return { ...state, library: action.payload, isLibraryLoaded: true };
     case 'SET_AGE':
       return { ...state, age: action.payload };
     case 'SET_AUTHOR_NAME':
@@ -72,8 +62,15 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         isFinished: false,
         initialIdea: state.initialIdea,
       };
-      const newLibrary = updateLibrary(state.library, newBook);
-      // Start at index 0, which is the cover view
+      
+      const bookIndex = state.library.findIndex(b => b.id === newBook.id);
+      const newLibrary = [...state.library];
+      if (bookIndex > -1) {
+          newLibrary[bookIndex] = newBook;
+      } else {
+          newLibrary.push(newBook);
+      }
+
       return { ...state, isLoading: false, book: newBook, step: 'creating', currentPageIndex: 0, library: newLibrary, captureContext: null, initialIdea: { text: '', media: [] } };
     }
     
@@ -84,16 +81,24 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             age: state.age,
             style: state.style,
             author: state.authorName,
-            isFinished: false, // Not finished until confirmed in viewer
+            isFinished: false,
             initialIdea: state.initialIdea,
         };
-        const newLibrary = updateLibrary(state.library, newBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === newBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = newBook;
+        } else {
+            newLibrary.push(newBook);
+        }
+
         return { 
             ...state, 
             isLoading: false, 
             book: newBook, 
-            step: 'creating', // Go to the editor to allow for revisions
-            currentPageIndex: 0, // Start at the cover
+            step: 'creating',
+            currentPageIndex: 0,
             library: newLibrary,
             captureContext: null,
             initialIdea: { text: '', media: [] },
@@ -106,13 +111,18 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state.book,
         pages: [...state.book.pages, action.payload]
       };
-      const newLibrary = updateLibrary(state.library, updatedBook);
+      
+      const bookIndex = state.library.findIndex(b => b.id === updatedBook.id);
+      const newLibrary = [...state.library];
+      if (bookIndex > -1) {
+          newLibrary[bookIndex] = updatedBook;
+      }
+
       return {
         ...state,
         isLoading: false,
         book: updatedBook,
         step: 'creating',
-        // Navigate to the newly added page, which has an index of pages.length
         currentPageIndex: updatedBook.pages.length,
         library: newLibrary,
         captureContext: null,
@@ -124,14 +134,20 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         const updatedBook = {
             ...state.book,
             pages: [...state.book.pages, action.payload],
-            isFinished: false, // Not finished until confirmed in viewer
+            isFinished: false,
         };
-        const newLibrary = updateLibrary(state.library, updatedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === updatedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = updatedBook;
+        }
+
         return {
           ...state,
           isLoading: false,
           book: updatedBook,
-          step: 'finished', // Go to viewer for preview
+          step: 'finished',
           library: newLibrary,
         };
     }
@@ -150,7 +166,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             return p;
         });
         const updatedBook = { ...state.book, pages: pagesWithNewRevision };
-        const newLibrary = updateLibrary(state.library, updatedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === updatedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = updatedBook;
+        }
+        
         return {
             ...state,
             isLoading: false,
@@ -164,7 +186,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case 'REVISE_COVER_SUCCESS': {
         if (!state.book) return state;
         const updatedBook = { ...state.book, coverImageUrl: action.payload.newCoverImageUrl };
-        const newLibrary = updateLibrary(state.library, updatedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === updatedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = updatedBook;
+        }
+
         return {
             ...state,
             isLoading: false,
@@ -188,7 +216,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case 'ADD_DEDICATION': {
         if (!state.book) return state;
         const updatedBook = { ...state.book, dedication: action.payload };
-        const newLibrary = updateLibrary(state.library, updatedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === updatedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = updatedBook;
+        }
+        
         return { ...state, book: updatedBook, library: newLibrary };
     }
       
@@ -206,7 +240,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             ...state,
             book: bookToLoad,
             step: bookToLoad.isFinished ? 'finished' : 'creating',
-            // If unfinished, go to last page. Last page index is pages.length
             currentPageIndex: bookToLoad.isFinished ? 0 : bookToLoad.pages.length,
         };
     }
@@ -214,19 +247,31 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     case 'FINISH_BOOK': {
         if (!state.book) return state;
         const finishedBook = { ...state.book, isFinished: true };
-        const newLibrary = updateLibrary(state.library, finishedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === finishedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = finishedBook;
+        }
+
         return {
             ...state,
             book: finishedBook,
             library: newLibrary,
-            step: 'library', // Go to library after finishing
+            step: 'library',
         };
     }
     
     case 'EDIT_BOOK': {
         if (!state.book) return state;
         const unfinishedBook = { ...state.book, isFinished: false };
-        const newLibrary = updateLibrary(state.library, unfinishedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === unfinishedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = unfinishedBook;
+        }
+
         return {
             ...state,
             book: unfinishedBook,
@@ -237,7 +282,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     }
       
     case 'START_REAL_TIME_INPUT': {
-        // FIX: Add 'audio' to the map to handle all CaptureType options.
         const nextStepMap: Record<CaptureType, AppState['step']> = {
             drawing: 'drawing',
             video: 'recordingVideo',
@@ -271,7 +315,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
             return p;
         });
         const updatedBook = { ...state.book, pages: updatedPages };
-        const newLibrary = updateLibrary(state.library, updatedBook);
+        
+        const bookIndex = state.library.findIndex(b => b.id === updatedBook.id);
+        const newLibrary = [...state.library];
+        if (bookIndex > -1) {
+            newLibrary[bookIndex] = updatedBook;
+        }
+
         return {
             ...state,
             isLoading: false,
@@ -297,7 +347,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     }
 
     case 'RESET':
-      return { ...initialState, library: state.library, step: 'age' };
+      return { ...initialState, library: state.library, step: 'age', isLibraryLoaded: state.isLibraryLoaded };
     default:
       return state;
   }
@@ -313,6 +363,38 @@ export const AppContext = createContext<{
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const previousLibraryRef = useRef<Book[] | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+        try {
+            const loadedLibrary = await loadLibraryFromStorage();
+            if (isMounted) {
+                dispatch({ type: 'SET_LIBRARY', payload: loadedLibrary });
+            }
+        } catch (error) {
+            console.error("Failed to load library on startup:", error);
+            if (isMounted) {
+                dispatch({ type: 'SET_LIBRARY', payload: [] });
+            }
+        }
+    };
+    loadData();
+    return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+      if (state.isLibraryLoaded && state.library !== previousLibraryRef.current) {
+          if (previousLibraryRef.current !== null) {
+              saveLibraryToStorage(state.library).catch(err => {
+                  console.error("Could not save library to local storage", err);
+              });
+          }
+      }
+      previousLibraryRef.current = state.library;
+  }, [state.library, state.isLibraryLoaded]);
+
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>

@@ -617,10 +617,14 @@ export async function generateSinglePageVideo(
 ): Promise<{ videoUrl: string }> {
     const pageText = page.revisions[page.currentRevisionIndex].text;
 
+    const voiceStyle = book.age <= 6 ? "a gentle and enthusiastic voice, like a friendly cartoon character" : "a clear, warm, and engaging storyteller voice";
+
+    // The video prompt now asks the VEO model to generate the video with narration included.
     const videoPrompt = `
         An animated video scene in the style of "${book.style}".
         The animation should be magical, vibrant, and beautiful, suitable for a child aged ${book.age}.
-        The scene should match the provided reference image and be animated based on the text: "${pageText}".
+        The scene should match the provided reference image and be animated based on the text.
+        Crucially, the video MUST include a narration of the following text, spoken in ${voiceStyle}: "${pageText}".
     `;
 
     const [header, base64] = page.revisions[page.currentRevisionIndex].imageUrl.split(',');
@@ -645,7 +649,7 @@ export async function generateSinglePageVideo(
     });
 
     onProgress('Video generation started. This may take a few minutes.', 10);
-    const maxProgressFromApi = 95;
+    const maxVideoProgress = 90;
     while (!operation.done) {
         await new Promise(resolve => setTimeout(resolve, 10000));
         operation = await ai.operations.getVideosOperation({ operation: operation });
@@ -653,14 +657,12 @@ export async function generateSinglePageVideo(
         if (operation.metadata) {
             const metadata = operation.metadata as any;
             const stateMessage = metadata.progressMessage || metadata.state || 'Processing...';
-            const apiPercentage = metadata.progressPercentage || 10;
-            const scaledPercentage = Math.min(maxProgressFromApi, 10 + (apiPercentage / 100) * (maxProgressFromApi - 10));
+            const apiPercentage = metadata.progressPercentage || 0;
+            const scaledPercentage = Math.min(maxVideoProgress, 10 + (apiPercentage / 100) * (maxVideoProgress - 10));
             onProgress(stateMessage, scaledPercentage);
         }
     }
     
-    onProgress('Finalizing video...', maxProgressFromApi);
-
     if (operation.error) {
         console.error(`Video generation operation failed:`, operation.error);
         let detailedError = "An unknown error occurred.";
@@ -689,18 +691,18 @@ export async function generateSinglePageVideo(
         throw new Error(`Video generation finished, but no download link was provided by the API. This can sometimes be caused by safety policy violations in the page text.`);
     }
     
-    onProgress('Fetching generated video...', 98);
-    const videoWithAudioUrl = `${downloadLink}&key=${API_KEY}`;
-    const response = await fetch(videoWithAudioUrl);
-    if (!response.ok) {
-        throw new Error(`Failed to download the generated video. Status: ${response.status}`);
+    onProgress('Fetching final video...', 92);
+    const videoResponse = await fetch(`${downloadLink}&key=${API_KEY}`);
+    if (!videoResponse.ok) {
+        throw new Error(`Failed to download the generated video. Status: ${videoResponse.status}`);
     }
-    const videoBlob = await response.blob();
+    const finalVideoBlob = await videoResponse.blob();
     
-    // Save the video to IndexedDB for persistence
-    await saveVideo(book.id, page.id, videoBlob);
+    onProgress('Saving final video...', 98);
+    await saveVideo(book.id, page.id, finalVideoBlob);
 
-    const finalVideoUrl = URL.createObjectURL(videoBlob);
+    // The component's cleanup effect will handle revocation later.
+    const finalVideoUrl = URL.createObjectURL(finalVideoBlob);
     
     onProgress('Complete!', 100);
     return { videoUrl: finalVideoUrl };

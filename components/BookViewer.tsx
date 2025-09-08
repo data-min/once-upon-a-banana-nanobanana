@@ -1,5 +1,4 @@
 
-
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import Button from './Button';
@@ -102,19 +101,20 @@ const BookViewer: React.FC = () => {
 
     return (
         <div className="w-full h-full flex flex-row items-stretch">
-            {/* Left Page: Image or Video */}
+            {/* Left Page: Image */}
             <div className="w-1/2 h-full flex items-center justify-center p-6 bg-white/50">
-                {page.videoUrl ? (
-                    <video src={page.videoUrl} controls className="w-full h-full object-contain" />
-                ) : (
-                    revision.imageUrl && <img src={revision.imageUrl} alt={`Illustration for page ${pageIndex + 1}`} className="w-full h-full object-contain" />
-                )}
+                {revision.imageUrl && <img src={revision.imageUrl} alt={`Illustration for page ${pageIndex + 1}`} className="w-full h-full object-contain" />}
             </div>
-            {/* Right Page: Text */}
+            {/* Right Page: Text and Video */}
             <div className="w-1/2 h-full p-8 bg-amber-50 relative flex flex-col">
                 <div className="flex-grow overflow-y-auto pr-2">
                     {revision.text && <p className="font-body text-xl md:text-2xl leading-relaxed text-gray-700 max-w-prose text-left">{revision.text}</p>}
                 </div>
+                {page.videoUrl && (
+                    <div className="flex-shrink-0 pt-4">
+                        <video src={page.videoUrl} controls className="w-full rounded-lg shadow-md" style={{ maxHeight: '200px' }}></video>
+                    </div>
+                )}
             </div>
         </div>
     );

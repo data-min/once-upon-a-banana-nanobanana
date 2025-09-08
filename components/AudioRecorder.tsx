@@ -8,7 +8,7 @@ import { CaptureData } from '../types';
 const AudioRecorder: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
   const { captureContext } = state;
-  const { status, startRecording, stopRecording, getMediaBlob, timer, error } = useMediaRecorder({ isVideo: false, timeLimit: 30 });
+  const { status, startRecording, stopRecording, getMediaBlob, error } = useMediaRecorder({ isVideo: false });
   const { transcript, isListening, startListening, stopListening, supported: speechSupported, error: speechError } = useSpeechRecognition();
   const [textPrompt, setTextPrompt] = useState('');
 
@@ -81,7 +81,6 @@ const AudioRecorder: React.FC = () => {
             <div className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center transition-all ${isListening ? 'bg-red-500 animate-pulse' : 'bg-cyan-400'}`}>
                 <span className="text-5xl">🎙️</span>
             </div>
-            {status === 'recording' && <p className="font-display text-4xl mt-4">{timer}s</p>}
         </div>
         
         {error && <p className="text-red-500 mt-2">{error}</p>}

@@ -119,7 +119,8 @@ export async function mergeAudioAndVideo(
             }
         };
         recorder.onerror = (e) => {
-            reject(new Error(`MediaRecorder error: ${(e as any).error.name}`));
+            const error = (e as any).error || new Error('Unknown MediaRecorder error');
+            reject(new Error(`MediaRecorder error: ${error.name || error.message}`));
             if (audioCtx.state !== 'closed') {
                 audioCtx.close();
             }
@@ -128,11 +129,9 @@ export async function mergeAudioAndVideo(
         const videoElement = document.createElement('video');
         videoElement.muted = true;
         videoElement.src = videoBlobUrl;
-        videoElement.onerror = () => reject(new Error('Failed to load generated video.'));
 
         const audioElement = document.createElement('audio');
         audioElement.src = audioBlobUrl;
-        audioElement.onerror = () => reject(new Error('Failed to load generated narration.'));
         
         const audioSourceNode = audioCtx.createMediaElementSource(audioElement);
         audioSourceNode.connect(dest);
@@ -145,15 +144,23 @@ export async function mergeAudioAndVideo(
 
         videoElement.addEventListener('play', drawFrame);
 
-        await Promise.all([
-            new Promise<void>((res, rej) => { videoElement.onloadeddata = () => res(); videoElement.onerror = () => rej(new Error('Video file is invalid.')); }),
-            new Promise<void>((res, rej) => { audioElement.onloadeddata = () => res(); audioElement.onerror = () => rej(new Error('Audio file is invalid.')); }),
-        ]);
+        try {
+            await Promise.all([
+                new Promise<void>((res, rej) => { videoElement.onloadeddata = () => res(); videoElement.onerror = () => rej(new Error('Video file is invalid.')); }),
+                new Promise<void>((res, rej) => { audioElement.onloadeddata = () => res(); audioElement.onerror = () => rej(new Error('Audio file is invalid.')); }),
+            ]);
+        } catch (err) {
+            return reject(err);
+        }
 
         onProgress(50, 'Combining narration and animation...');
         recorder.start();
         
         try {
+            // Browsers may suspend the audio context until a user gesture.
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
             await Promise.all([videoElement.play(), audioElement.play()]);
         } catch (error) {
             return reject(new Error(`Playback failed: ${error}. This can happen if the browser blocks autoplay.`));
@@ -165,7 +172,7 @@ export async function mergeAudioAndVideo(
                    recorder.stop();
                 }
                 onProgress(100, 'Finalizing...');
-            }, 500);
+            }, 500); // Wait a moment to capture the last frame/audio
         };
     });
 }

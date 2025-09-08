@@ -82,6 +82,7 @@ export interface AppState {
   error: string | null;
   currentPageIndex: number;
   library: Book[];
+  isLibraryLoaded: boolean;
   captureContext: {
     from: 'input' | 'creating';
     pageId?: string;
@@ -90,6 +91,7 @@ export interface AppState {
 }
 
 export type AppAction =
+  | { type: 'SET_LIBRARY'; payload: Book[] }
   | { type: 'SET_STEP'; payload: AppStep }
   | { type: 'SET_AGE'; payload: number }
   | { type: 'SET_AUTHOR_NAME'; payload: string }

@@ -9,7 +9,7 @@ import { fileToBase64 } from '../utils/fileUtils';
 const VideoRecorder: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
   const { captureContext } = state;
-  const { status, startRecording, stopRecording, getMediaBlob, timer, error, stream } = useMediaRecorder({ isVideo: true, timeLimit: 30 });
+  const { status, startRecording, stopRecording, getMediaBlob, error, stream } = useMediaRecorder({ isVideo: true });
   const { transcript, isListening, startListening, stopListening, supported: speechSupported, error: speechError } = useSpeechRecognition();
   const [textPrompt, setTextPrompt] = useState('');
   
@@ -110,7 +110,12 @@ const VideoRecorder: React.FC = () => {
       <div className="w-full max-w-xl bg-white/70 p-6 rounded-2xl shadow-lg">
         <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
           {status !== 'stopped' && <video ref={videoRef} autoPlay muted className="w-full h-full object-cover"></video>}
-          {status === 'recording' && <div className="absolute top-4 right-4 text-white font-display text-2xl bg-red-500/80 px-3 rounded-full">{timer}s</div>}
+          {status === 'recording' && (
+            <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500 text-white font-body px-3 py-1 rounded-full animate-pulse z-10">
+                <div className="w-2 h-2 bg-white rounded-full"></div>
+                <span>REC</span>
+            </div>
+          )}
           {status === 'stopped' && getMediaBlob() && <video src={URL.createObjectURL(getMediaBlob()!)} controls className="w-full h-full"></video>}
         </div>
         {error && <p className="text-red-500 mt-2">{error}</p>}
